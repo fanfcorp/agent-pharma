@@ -42,11 +42,21 @@ def extract_text(image: Image.Image):
     return pytesseract.image_to_string(image)
 
 def detect_medicament_name(text: str):
-    visa_match = re.search(r"Visa.*?(?P<name>[A-Z0-9\-]+)", text)
-    if visa_match:
-        return visa_match.group("name")
-    candidates = re.findall(r"\b[A-ZÉÈÀÂÎÔÛÄËÏÖÜÇ0-9\-]{3,}\b", text)
-    return candidates[0] if candidates else None
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "user", "content": f"Voici le texte extrait par OCR d'un support promotionnel :
+
+{text}
+
+Peux-tu détecter le nom du médicament (nom commercial) mentionné dans ce support ? Réponds uniquement par ce nom."}
+            ],
+            max_tokens=20
+        )
+        return response.choices[0].message.content.strip()
+    except:
+        return None
 
 def find_rcp_url_from_bdpm(med_name: str):
     try:
@@ -260,6 +270,9 @@ support_type = st.selectbox("📂 Type de support promotionnel :", [
 
 diffusion_context = st.text_input("🌍 Contexte ou lieu de diffusion :")
 
+manual_override = st.checkbox("✍️ Entrer manuellement le nom du médicament")
+manual_name = st.text_input("💊 Nom du médicament (si connu)", "") if manual_override else ""
+
 uploaded_file = st.file_uploader("📁 Uploader une image ou un PDF", type=["pdf", "png", "jpg", "jpeg"])
 
 ocr_text, medicament_name, ammpath, amm_text, amm_summary = "", "", "", "", ""
@@ -276,25 +289,31 @@ if uploaded_file:
         pdf_path = image_to_pdf_path(image)
 
     st.image(image, caption="🖼️ Aperçu du support")
-    ocr_text = extract_text(image)
-    medicament_name = detect_medicament_name(ocr_text)
+        ocr_text = extract_text(image)
+    st.subheader("📝 Texte extrait par OCR")
+    st.code(ocr_text[:2000] if ocr_text else "(aucun texte extrait)", language="text")
+            # Demande explicite à GPT-4o pour détecter le nom du médicament depuis le texte OCR
+        with st.spinner("🔍 Détection du nom du médicament via GPT-4o..."):
+            try:
+                name_response = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "user", "content": f"Voici le texte extrait par OCR d'un support promotionnel :
+
+{ocr_text}
+
+Peux-tu détecter le nom du médicament (nom commercial) mentionné dans ce support ? Réponds uniquement par ce nom."}
+                    ],
+                    max_tokens=20
+                )
+                medicament_name = manual_name or name_response.choices[0].message.content.strip()
+            except Exception as e:
+                st.error("❌ Échec de la détection via GPT.")
+                medicament_name = ""
 
     if medicament_name:
-        st.info(f"🔍 Médicament détecté automatiquement : **{medicament_name}**")
-        rcp_url = find_rcp_url_from_bdpm(medicament_name)
-        if rcp_url:
-            st.info("✅ Lien vers le RCP trouvé sur la BDPM.")
-            ammpath = download_rcp_pdf(rcp_url, medicament_name)
-            if ammpath:
-                st.success("📥 RCP téléchargé avec succès.")
-                amm_text = extract_pdf_text(ammpath)
-                if amm_text:
-                    st.success("📄 Texte extrait avec succès — résumé en cours...")
-                    amm_summary = summarize_amm(amm_text)
-                    if amm_summary:
-                        st.success("🧠 Résumé du RCP généré et prêt à l’analyse réglementaire.")
-                        st.markdown(amm_summary)
-                    else:
+        medicament_name = st.text_input("✏️ Nom du médicament détecté (modifiable) :", medicament_name)
+        st.info(f"🔍 Médicament utilisé pour la recherche : **{medicament_name}**")
                         st.error("❌ Échec du résumé de l'AMM.")
                 else:
                     st.error("❌ Échec d’extraction du texte du RCP.")
