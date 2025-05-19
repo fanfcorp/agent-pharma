@@ -5,3 +5,4 @@ pdf2image
 fpdf
 pytesseract
 bs4
+PyPDF2
