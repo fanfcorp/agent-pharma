@@ -301,8 +301,21 @@ if uploaded_file:
         st.info(f"🔍 Médicament détecté automatiquement : **{medicament_name}**")
         rcp_url = find_rcp_url_from_bdpm(medicament_name)
         if rcp_url:
+            st.info("✅ Lien vers le RCP trouvé sur la BDPM.")
             ammpath = download_rcp_pdf(rcp_url, medicament_name)
             if ammpath:
+                st.success("📥 RCP téléchargé avec succès.")
+                amm_text = extract_pdf_text(ammpath)
+                if amm_text:
+                    st.success("📄 Texte extrait avec succès — intégré au prompt pour GPT-4o.")
+                else:
+                    st.error("⚠️ RCP téléchargé mais impossible d'en extraire le texte.")
+            else:
+                st.error("❌ Échec lors du téléchargement du fichier PDF du RCP.")
+        else:
+            st.warning("⚠️ Aucun lien vers le RCP trouvé sur la BDPM pour ce médicament.")
+
+        if ammpath:
                 amm_text = extract_pdf_text(ammpath)
                 if amm_text:
                     st.success("📄 Texte du RCP intégré au contexte de l'analyse")
