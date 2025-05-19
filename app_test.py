@@ -37,7 +37,8 @@ def export_text_to_pdf(text: str, filename: str):
         pdf.add_page()
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.set_font("Arial", size=10)
-        for line in text.split('\\n'):
+        for line in text.split('
+'):
             pdf.multi_cell(0, 10, line)
         pdf_path = os.path.join(tempfile.gettempdir(), filename)
         pdf.output(pdf_path)
