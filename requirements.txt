@@ -3,3 +3,4 @@ openai
 Pillow
 pdf2image
 fpdf
+pytesseract
