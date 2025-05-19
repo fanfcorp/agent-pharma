@@ -1,9 +1,8 @@
-
 import streamlit as st
 from PIL import Image
 import openai
-import io
 import os
+import tempfile
 from pdf2image import convert_from_bytes
 
 # Load OpenAI API key
@@ -14,10 +13,10 @@ if not api_key:
 
 client = openai.OpenAI(api_key=api_key)
 
-# Extended prompt for ANSM compliance
-def build_prompt():
-    return """
-# 🎯 Prompt expert conformité réglementaire (pharma)
+# Prompt complet avec variables pour type et contexte de diffusion
+def build_prompt(support_type: str, diffusion_context: str):
+    return f"""
+# 🌟 Prompt expert conformité réglementaire (pharma)
 
 Tu es un expert réglementaire dans un laboratoire pharmaceutique, spécialiste de la conformité des supports promotionnels destinés aux professionnels de santé. Tu maîtrises parfaitement la réglementation française, notamment :
 
@@ -27,13 +26,22 @@ Tu es un expert réglementaire dans un laboratoire pharmaceutique, spécialiste 
 - Les recommandations de l’ANSM sur la publicité des médicaments
 - Les exigences de l’EMA, lorsqu’elles s’appliquent
 
-Ton objectif est de **vérifier la conformité réglementaire** d’un support promotionnel fourni sous forme **d’image**, destiné aux professionnels de santé.
+---
+
+## 🧳 Contexte spécifique fourni par l’utilisateur
+
+- **Type de support sélectionné** : {support_type}
+- **Lieu ou mode de diffusion prévu** : {diffusion_context}
+
+💡 *Adapte ton analyse réglementaire à ces éléments dès la première section. Sois particulièrement rigoureux si le support est destiné à un usage papier seul ou à une large audience HCP (congrès, mailing de masse, etc.).*
 
 ---
 
 ## 🧾 Étapes de l’analyse
 
 ### 1. 🗂️ Identifier le type de support
+
+> L'utilisateur a indiqué que le support est un(e) **{support_type}**, prévu pour une diffusion via **{diffusion_context}**.
 
 Indique parmi les options suivantes :
 - bannière web
@@ -43,32 +51,15 @@ Indique parmi les options suivantes :
 - encart email
 - prospectus / flyer
 - plaquette produit
-- autre (à préciser)
+- autre (précisé)
 
-💡 *Adapte le niveau d’exigence réglementaire selon le type de support, en tenant compte des éléments suivants :*
-
-| Type de support         | Mentions obligatoires exigées                                     | Format particulier ou dérogatoire                                     |
-|-------------------------|--------------------------------------------------------------------|------------------------------------------------------------------------|
-| **Bannière web**        | Nom du médicament, DCI, lien vers mentions complètes               | Les mentions peuvent être accessibles via un lien cliquable adjacent  |
-| **Encart email**        | Nom du médicament, DCI, résumé AMM, effets indésirables            | L’email peut renvoyer via un lien vers le RCP ou mentions légales     |
-| **Affiche / Kakemono**  | Nom, DCI, AMM, effets indésirables, laboratoire, mentions légales  | Doivent être visibles sans zoom, format lisible à distance            |
-| **Page de magazine**    | Toutes mentions usuelles selon réglementation papier               | Idem qu’affiche : pas de lien hypertexte possible                     |
-| **Flyer / Prospectus**  | Mention complète du médicament, DCI, AMM, effets indésirables      | S’il est à destination papier seule, toutes les mentions doivent figurer |
-| **Plaquette produit**   | Toutes mentions complètes + sources si études citées              | Support souvent détaillé : exigence maximale de conformité             |
-| **Diapositive PowerPoint** | Nom du médicament, DCI, résumé AMM (ou en annexe), effets indésirables | Vérifier lisibilité et équilibre à l’oral comme à l’écrit             |
-| **Autre**               | À évaluer selon le format et la diffusion prévue                  | Si usage digital ou événementiel, adapter au canal                    |
-
-🔎 En cas de **format court**, les mentions obligatoires peuvent figurer dans un lien (web) ou sur une page dédiée complémentaire, **mais doivent être accessibles immédiatement** (pas de démarche complexe pour y accéder).
-
----
+[...]
 
 ### 2. 🔍 Effectuer un OCR complet de l’image
 
 - Extraire **l’intégralité du texte visible**.
 - Conserver la **mise en forme sémantique** : titres, encadrés, couleurs, tableaux, astérisques…
 - Signaler toute **illisibilité**, **élément masqué**, **texte trop petit** ou **support partiel** (ex. une seule face d’un flyer recto/verso).
-
----
 
 ### 3. ✅ Vérifier la conformité réglementaire
 
@@ -123,83 +114,87 @@ Attribue une note sur 100 avec cette échelle :
 - ⚠️ **75 – 89** : À corriger
 - ❌ **< 75** : Non conforme
 
----
-
 ### B. Résumé des points critiques
-
-> Ex :  
-> - Absence de mention de la DCI  
-> - Données cliniques non sourcées  
-> - Ton promotionnel avec superlatifs
-
----
 
 ### C. Tableau de conformité détaillé
 
 | Axe                       | Statut     | Justification concise                               |
 |--------------------------|------------|-----------------------------------------------------|
-| Mentions obligatoires    | ⚠️          | AMM incomplète, DCI absente                         |
-| Équilibre bénéfices/risques | ✅       | Effets indésirables mentionnés                      |
-| Références scientifiques | ❌          | Absence de sources, pas de publication identifiée  |
-| Caractère promotionnel   | ⚠️          | Formulation ambiguë : “efficacité remarquable”      |
-| Publicité comparative    | ✅          | Aucune comparaison                                  |
-| Spécificité de la cible  | ✅          | Ton réservé aux professionnels                      |
-| Identification labo      | ✅          | Nom et contact présents                             |
-| Lisibilité/ergonomie     | ⚠️          | Mention légale trop petite, illisible sans zoom     |
-
----
+| Mentions obligatoires    |            |                                                     |
+| Équilibre bénéfices/risques |            |                                                     |
+| Références scientifiques |            |                                                     |
+| Caractère promotionnel   |            |                                                     |
+| Publicité comparative    |            |                                                     |
+| Spécificité de la cible  |            |                                                     |
+| Identification labo      |            |                                                     |
+| Lisibilité/ergonomie     |            |                                                     |
 
 ### D. Propositions de reformulation
 
-Exemples :
-- ❌ “Le meilleur traitement disponible” → ✅ “Traitement recommandé par les recommandations actuelles”
-- ❌ “Tolérance parfaite” → ✅ “Tolérance évaluée dans l’étude X, avec X % d’effets indésirables”
+### 🧠 Conclusion réglementaire synthétique
 
----
-
-## 🧠 Conclusion réglementaire synthétique
-
-**Avis final** :  
+**Avis final** :
 ✅ Conforme  
 ⚠️ À corriger avant diffusion  
 ❌ Non conforme – retour au marketing recommandé
 
 > Recommandation : relire ce support avec le pharmacien responsable si des points critiques sont confirmés (ex. allégation sans source, données cliniques douteuses).
 
----
-
-## 📎 Bonus (optionnel)
+## 📌 Bonus (optionnel)
 
 - Signale toute incohérence scientifique ou juridique critique.
 - Précise s’il est recommandé d’effectuer une **validation interne finale** par le responsable conformité.
 """
 
-# Convert image to PDF
+# Fonction de conversion image -> PDF temporaire
 def image_to_pdf_path(image: Image.Image):
     image = image.convert("RGB")
-    pdf_path = "/tmp/input_as_pdf.pdf"
-    image.save(pdf_path, format="PDF")
-    return pdf_path
+    temp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+    image.save(temp_pdf.name, format="PDF")
+    return temp_pdf.name
 
-# Streamlit app
-st.title("Pour ma Béné d'amour: Vérification ANSM avec GPT-4o")
+# 🔹 Streamlit app
+st.title("Pour ma Béné d'amour 💕 : Vérification ANSM avec GPT-4o")
 
-uploaded_file = st.file_uploader("Uploader une image ou un PDF", type=["pdf", "png", "jpg", "jpeg"])
+uploaded_file = st.file_uploader("📁 Uploader une image ou un PDF", type=["pdf", "png", "jpg", "jpeg"])
+
+support_type = st.selectbox(
+    "📂 Quel est le type de support promotionnel ?",
+    [
+        "Bannière web",
+        "Diapositive PowerPoint",
+        "Affiche / Kakemono",
+        "Page de magazine",
+        "Encart email",
+        "Prospectus / Flyer",
+        "Plaquette produit",
+        "Autre (préciser)"
+    ]
+)
+
+diffusion_context = st.text_input(
+    "🌍 Où ce support sera-t-il diffusé ? (ex : congrès, site web, cabinet médical...)"
+)
 
 if uploaded_file:
     if uploaded_file.type == "application/pdf":
-        pdf_path = "/tmp/uploaded_doc.pdf"
+        pdf_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
         with open(pdf_path, "wb") as f:
             f.write(uploaded_file.read())
         pages = convert_from_bytes(open(pdf_path, "rb").read())
-        st.image(pages[0], caption="Page 1 du PDF", use_container_width=True)
+        for i, page in enumerate(pages):
+            st.image(page, caption=f"Page {i+1}", use_container_width=True)
     else:
         image = Image.open(uploaded_file)
         st.image(image, caption="Image importée", use_container_width=True)
         pdf_path = image_to_pdf_path(image)
 
-    if st.button("Analyser avec GPT-4o"):
-        with st.spinner("📄 Je convertis ton image pour l'envoyer à OpenAI..."):
+    if st.button("🔍 Analyser avec GPT-4o"):
+        if not diffusion_context:
+            st.warning("⚠️ Merci d’indiquer le contexte de diffusion.")
+            st.stop()
+
+        with st.spinner("📄 Conversion et envoi à OpenAI..."):
             try:
                 with open(pdf_path, "rb") as f:
                     file = client.files.create(file=f, purpose="assistants")
@@ -211,14 +206,14 @@ if uploaded_file:
                             {
                                 "role": "user",
                                 "content": [
-                                    {"type": "text", "text": build_prompt()},
+                                    {"type": "text", "text": build_prompt(support_type, diffusion_context)},
                                     {"type": "file", "file": {"file_id": file.id}}
                                 ]
                             }
                         ],
                         max_tokens=1500
                     )
-                st.success("✅ Analyse terminée - J'espère que ça va t'aider!")
+                st.success("✅ Analyse terminée - J’espère que ça va t’aider !")
                 st.markdown(response.choices[0].message.content)
             except Exception as e:
                 st.error(f"❌ Erreur OpenAI : {e}")
