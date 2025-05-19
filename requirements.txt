@@ -4,3 +4,4 @@ Pillow
 pdf2image
 fpdf
 pytesseract
+bs4
