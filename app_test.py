@@ -43,6 +43,24 @@ def extract_text(image: Image.Image):
 
 def detect_medicament_name(text: str):
     try:
+        prompt = (
+            f"Voici le texte extrait par OCR d'un support promotionnel :
+
+"
+            f"{text}
+
+"
+            f"Peux-tu détecter le nom du médicament (nom commercial) mentionné dans ce support ? Réponds uniquement par ce nom."
+        )
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=20
+        )
+        return response.choices[0].message.content.strip()
+    except:
+        return None
+    try:
         prompt = f"Voici le texte extrait par OCR d'un support promotionnel :
 
 {ocr_text}
