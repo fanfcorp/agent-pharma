@@ -22,24 +22,40 @@ client = openai.OpenAI(api_key=api_key)
 # Fonctions utilitaires
 
 def image_to_pdf_path(image: Image.Image):
-    image = image.convert("RGB")
-    temp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-    image.save(temp_pdf.name, format="PDF")
-    return temp_pdf.name
+    try:
+        image = image.convert("RGB")
+        temp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+        image.save(temp_pdf.name, format="PDF")
+        return temp_pdf.name
+    except Exception as e:
+        st.error(f"❌ Erreur lors de la conversion image en PDF : {e}")
+        return ""
 
 def export_text_to_pdf(text: str, filename: str):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.set_font("Arial", size=10)
-    for line in text.split('\n'):
-        pdf.multi_cell(0, 10, line)
-    pdf_path = os.path.join(tempfile.gettempdir(), filename)
-    pdf.output(pdf_path)
-    return pdf_path
+    try:
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.set_font("Arial", size=10)
+        for line in text.split('
+'):
+            pdf.multi_cell(0, 10, line)
+        pdf_path = os.path.join(tempfile.gettempdir(), filename)
+        pdf.output(pdf_path)
+        return pdf_path
+    except Exception as e:
+        st.error(f"❌ Erreur lors de l'export PDF : {e}")
+        return ""
 
 def extract_text(image: Image.Image):
-    return pytesseract.image_to_string(image)
+    try:
+        return pytesseract.image_to_string(image)
+    except pytesseract.TesseractNotFoundError as e:
+        st.error("❌ Tesseract OCR n'est pas installé sur le système.")
+        return ""
+    except Exception as e:
+        st.error(f"❌ Erreur OCR : {e}")
+        return ""
 
 def detect_medicament_name(text: str):
     try:
@@ -58,21 +74,9 @@ def detect_medicament_name(text: str):
             max_tokens=20
         )
         return response.choices[0].message.content.strip()
-    except:
-        return None
-    try:
-        prompt = f"Voici le texte extrait par OCR d'un support promotionnel :
-
-{ocr_text}
-
-Peux-tu détecter le nom du médicament \(nom commercial\) mentionné dans ce support ?" Réponds uniquement par ce nom."}
-                    ],
-                    max_tokens=20
-                )
-                medicament_name = manual_name or name_response.choices[0].message.content.strip()
-            except Exception as e:
-                st.error("❌ Échec de la détection via GPT.")
-                medicament_name = ""
+    except Exception as e:
+        st.error(f"❌ Erreur pendant la détection du médicament via GPT : {e}")
+        return ""
 
     if medicament_name:
         medicament_name = st.text_input("✏️ Nom du médicament détecté (modifiable) :", medicament_name)
