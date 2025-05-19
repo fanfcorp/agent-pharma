@@ -36,8 +36,9 @@ def export_text_to_pdf(text: str, filename: str):
         pdf = FPDF()
         pdf.add_page()
         pdf.set_auto_page_break(auto=True, margin=15)
-        pdf.set_font("Arial", size=10)
-        for line in text.split('\n'):
+        pdf.set_font("Arial", size=10, encoding="utf-8")
+        for line in text.split('
+'):
             pdf.multi_cell(0, 10, line)
         pdf_path = os.path.join(tempfile.gettempdir(), filename)
         pdf.output(pdf_path)
@@ -110,6 +111,43 @@ Tu es un expert réglementaire dans un laboratoire pharmaceutique, spécialiste 
 6. Générer un rapport noté, un tableau de conformité, et des suggestions de reformulation si nécessaire
 """
 
+def summarize_amm(text: str):
+    try:
+        prompt = f"Voici le résumé du RCP suivant :
+
+{text[:3000]}
+
+Peux-tu résumer les indications, contre-indications, posologie et précautions d’emploi de manière claire pour un usage réglementaire ?"
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=700
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        st.error(f"❌ Erreur pendant le résumé du RCP : {e}")
+        return ""
+
+def find_and_summarize_amm(medicament_name: str):
+    try:
+        url = f"https://base-donnees-publique.medicaments.gouv.fr/index.php?search={medicament_name}"
+        resp = requests.get(url)
+        soup = BeautifulSoup(resp.content, "html.parser")
+        link = soup.find("a", href=re.compile(r"\.pdf$"))
+        if link:
+            rcp_url = "https://base-donnees-publique.medicaments.gouv.fr" + link["href"]
+            rcp_resp = requests.get(rcp_url)
+            temp_path = os.path.join(tempfile.gettempdir(), f"{medicament_name}_rcp.pdf")
+            with open(temp_path, "wb") as f:
+                f.write(rcp_resp.content)
+            reader = PdfReader(temp_path)
+            full_text = "
+".join(page.extract_text() or "" for page in reader.pages)
+            return summarize_amm(full_text)
+    except Exception as e:
+        st.warning(f"⚠️ Impossible de trouver ou résumer l'AMM : {e}")
+    return ""
+
 def main():
     st.title("🔍 Vérification réglementaire ANSM avec GPT-4o")
 
@@ -149,8 +187,14 @@ def main():
             medicament_name = st.text_input("✏️ Nom du médicament détecté (modifiable) :", medicament_name)
             st.info(f"🔍 Médicament utilisé pour la recherche : **{medicament_name}**")
 
+        if medicament_name:
+            amm_summary = find_and_summarize_amm(medicament_name)
+            st.subheader("📎 Résumé automatique de l'AMM")
+            st.markdown(amm_summary or "_Aucun résumé disponible._")
+
         if st.button("🔍 Lancer l'analyse réglementaire complète"):
-            prompt = build_prompt(support_type, diffusion_context, "(résumé de l'AMM à insérer ici)")
+            amm_summary = find_and_summarize_amm(medicament_name)
+            prompt = build_prompt(support_type, diffusion_context, amm_summary)
             try:
                 with open(pdf_path, "rb") as f:
                     file = client.files.create(file=f, purpose="assistants")
